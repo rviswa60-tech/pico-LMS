@@ -1,0 +1,7 @@
+# Normalize line endings across platforms to avoid CRLF/LF diff noise
+* text=auto eol=lf
+
+# Keep these as-is
+*.png binary
+*.jpg binary
+*.ico binary
