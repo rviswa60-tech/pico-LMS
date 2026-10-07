@@ -14,7 +14,7 @@ badges, reward screen with confetti, and level unlocking. Progress is saved in l
        npm install
        npm run dev
 
-4. Open the URL it prints (usually http://localhost:5173) (starter)
+4. Open the URL it prints (usually http://localhost:5173)
 
 The first code run downloads the Python runtime (~10 MB) from a CDN, so you need internet.
 
