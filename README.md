@@ -1,4 +1,4 @@
-# Pico Labs – Interactive Python LMS (starter)
+# Pico Labs – Interactive Python LMS 
 
 A working vertical slice of the product vision: roadmap with locked levels, animated Pico,
 in-browser Python (real Python via Pyodide), quiz with "Why did I get this wrong?", challenges
