@@ -5,32 +5,49 @@ import { rankFor } from "../store.js";
 const Check = () => <span className="status-check">✓</span>;
 const Lock = () => <span className="status-lock">⌁</span>;
 
-export default function Roadmap({ levels, state, completed, justUnlocked, onOpen }) {
+export default function Roadmap({ levels, state, completed, justUnlocked, onOpen, onAssessment }) {
   const pico = usePico();
   const todayLabel = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(new Date()).toUpperCase();
   const [filter, setFilter] = useState("all");
-  const currentIdx = levels.findIndex((l) => !completed.includes(l.id));
-  const cur = currentIdx === -1 ? levels.length - 1 : currentIdx;
+  const passedGates = new Set(state?.assessmentPasses || []);
+  const gateFor = (levelNumber) => [3, 6, 9, 12, 15, 18].filter((gate) => gate < levelNumber && !passedGates.has(gate)).at(-1) || null;
+  const assessmentLocked = (index) => Boolean(gateFor(index + 1));
+  const currentIdx = levels.findIndex((l, i) => !completed.includes(l.id) && !assessmentLocked(i));
+  const lastCompleted = levels.reduce((last, level, index) => completed.includes(level.id) ? index : last, -1);
+  const cur = currentIdx === -1 ? Math.max(0, lastCompleted) : currentIdx;
   const next = levels[cur];
   const live = levels.filter((l) => l.content).length;
   const done = levels.filter((l) => completed.includes(l.id)).length;
   const activeDays = Math.min(7, Math.max(0, state?.streak || 0));
+  const tests = [3, 6, 9, 12, 15, 18].filter((gate) => completed.includes(`L${gate}`) && !(state?.assessmentPasses || []).includes(gate));
   useEffect(() => {
     pico.setContext({ surface: "dashboard", greeting: "Welcome back! Ready for your next mission?", topic: next?.title || "your next mission", body: next?.content?.intro || "Choose an open mission to keep your Python progress moving." });
   }, [next?.id, done]);
-  const status = (i) => completed.includes(levels[i].id) ? "done" : i === cur ? "current" : i < cur ? "done" : "locked";
+  useEffect(() => {
+    if (tests[0] === 3 && onAssessment) {
+      pico.say("Module 4 is locked. Attend the Competency Check after Module 3 to unlock it.", { mood: "encouraging", actions: [{ label: "Attend test module", primary: true, onClick: () => onAssessment(3) }], ttl: 0 });
+    }
+  }, [tests[0], onAssessment]);
+  const status = (i) => completed.includes(levels[i].id) ? "done" : assessmentLocked(i) ? "locked" : i === cur ? "current" : i < cur ? "done" : "locked";
+  const testStatus = (gate) => passedGates.has(gate) ? "assessment-done" : completed.includes(`L${gate}`) ? "assessment-current" : "assessment-locked";
 
   const click = (i) => {
     const l = levels[i];
     const s = status(i);
     if (s === "locked") {
-      pico.say(`Finish "${levels[Math.max(0, i - 1)].title}" first to open this level.`, { mood: "confused" });
+      const gate = gateFor(i + 1);
+      if (gate && onAssessment) pico.say(`Complete the competency check after Module ${gate} before starting this module.`, { mood: "encouraging", actions: [{ label: "Take competency check", primary: true, onClick: () => onAssessment(gate) }] });
+      else pico.say(`Finish "${levels[Math.max(0, i - 1)].title}" first to open this level.`, { mood: "confused" });
     } else if (!l.content) {
       pico.say("This mission is on the roadmap. More content is coming soon.", { mood: "thinking" });
     } else onOpen(l);
   };
 
-  const visible = levels.filter((l, i) => filter === "all" || status(i) === filter);
+  const timeline = levels.flatMap((level, index) => {
+    const items = [{ type: "level", level, index }];
+    if ([3, 6, 9, 12, 15, 18].includes(index + 1)) items.push({ type: "assessment", gate: index + 1 });
+    return items;
+  }).filter((item) => filter === "all" || (item.type === "level" && status(item.index) === filter) || (item.type === "assessment" && ((filter === "done" && testStatus(item.gate) === "assessment-done") || (filter === "current" && testStatus(item.gate) === "assessment-current"))));
 
   return (
     <div className="dashboard" id="overview">
@@ -45,6 +62,7 @@ export default function Roadmap({ levels, state, completed, justUnlocked, onOpen
         <div className="metric-card"><span className="metric-icon orange">✦</span><div><span className="metric-label">Experience points</span><strong>{state?.xp || 0} XP</strong><small>Earn XP as you ship</small></div></div>
         <div className="metric-card"><span className="metric-icon blue">↗</span><div><span className="metric-label">Learning streak</span><strong>{state?.streak || 0} <small className="of-total">days</small></strong><small>Show up, get better</small></div></div>
       </section>
+      {tests.length > 0 && <section className="assessment-banner" role="status" aria-live="polite"><div><p className="eyebrow">MODULE {tests[0] + 1} LOCKED</p><h2>Attend the Competency Check after Module {tests[0]}</h2><p>Complete and pass the test module to unlock Module {tests[0] + 1}.</p></div><button className="btn btn-light" onClick={() => onAssessment(tests[0])}>Attend test module <span>→</span></button></section>}
 
       <section className="continue-card">
         <div className="continue-art"><div className="art-orb orb-one" /><div className="art-orb orb-two" /><div className="art-grid" /><div className="art-code"><span>01</span> <i>print</i>(<b>"hello, world"</b>)<br /><span>02</span> <i>level</i> = <em>01</em><br /><span>03</span> <i>ship</i>(level)</div><div className="art-badge">✦</div></div>
@@ -55,8 +73,17 @@ export default function Roadmap({ levels, state, completed, justUnlocked, onOpen
         <section className="path-section" id="learning-path">
           <div className="section-heading"><div><p className="eyebrow">THE CURRICULUM</p><h2>Your learning path</h2></div><div className="filter-tabs">{[["all", "All missions"], ["current", "In progress"], ["done", "Completed"]].map(([key, label]) => <button key={key} className={filter === key ? "selected" : ""} onClick={() => setFilter(key)}>{label}</button>)}</div></div>
           <div className="course-list">
-            {visible.map((l) => {
-              const originalIndex = levels.findIndex((x) => x.id === l.id);
+            {timeline.map((item) => {
+              if (item.type === "assessment") {
+                const s = testStatus(item.gate); const ready = s === "assessment-current";
+                return <button key={`assessment-${item.gate}`} className={`course-row assessment-row ${s}`} onClick={() => ready ? onAssessment(item.gate) : pico.say(`Complete Module ${item.gate} before attending this competency check.`, { mood: "confused" })}>
+                  <span className="course-number">{s === "assessment-done" ? <Check /> : <span className="test-mark">✓</span>}</span>
+                  <span className="course-main"><span className="course-topline"><strong>Competency Check · Modules 1–{item.gate}</strong>{ready && <span className="current-pill">REQUIRED NEXT</span>}{s === "assessment-done" && <span className="current-pill done-test">PASSED</span>}</span><span className="course-sub">{ready ? `Pass this test to unlock Module ${item.gate + 1}.` : s === "assessment-done" ? `Module ${item.gate + 1} is unlocked.` : `Complete Module ${item.gate} first.`}</span></span>
+                  <span className="course-side">{s === "assessment-done" ? <span className="done-label">Passed</span> : ready ? <span className="open-label">Attend test →</span> : <span className="lock-label">Locked</span>}</span>
+                </button>;
+              }
+              const l = item.level;
+              const originalIndex = item.index;
               const s = status(originalIndex);
               return <button key={l.id} className={`course-row ${s} ${justUnlocked === l.id ? "just-unlocked" : ""}`} onClick={() => click(originalIndex)}>
                 <span className="course-number">{s === "done" ? <Check /> : s === "locked" ? <Lock /> : String(l.n).padStart(2, "0")}</span>

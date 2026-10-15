@@ -31,3 +31,5 @@ export async function syncProgress(levelId, payload) { return request(`/progress
 export async function recordAttempt(payload) { return request("/attempts", { method: "POST", body: JSON.stringify(payload) }); }
 export async function recordActivity(payload) { return request("/activity", { method: "POST", body: JSON.stringify(payload) }); }
 export async function resetRemoteProgress() { return request("/me/progress", { method: "DELETE" }); }
+export async function getAssessment(gateAfter) { return request(`/assessments/${gateAfter}`); }
+export async function submitAssessment(gateAfter, payload) { return request(`/assessments/${gateAfter}/submit`, { method: "POST", body: JSON.stringify(payload) }); }

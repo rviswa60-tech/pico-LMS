@@ -11,6 +11,7 @@ const initial = {
   completed: [],
   badges: [],
   hintsUsed: 0,
+  assessmentPasses: [],
 };
 
 export const RANKS = [
@@ -73,6 +74,7 @@ export function useProgress() {
       streak: dashboard.streak ?? p.streak,
       completed: dashboard.completed ?? p.completed,
       hintsUsed: dashboard.hintsUsed ?? p.hintsUsed,
+      assessmentPasses: dashboard.assessmentPasses ?? p.assessmentPasses,
     }));
   }, []);
 

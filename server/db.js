@@ -63,6 +63,19 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+  CREATE TABLE IF NOT EXISTS assessment_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    gate_after INTEGER NOT NULL,
+    objective_score INTEGER NOT NULL DEFAULT 0,
+    objective_total INTEGER NOT NULL DEFAULT 0,
+    coding_passed INTEGER NOT NULL DEFAULT 0,
+    passed INTEGER NOT NULL DEFAULT 0,
+    answers_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS assessment_attempts_user_gate ON assessment_attempts(user_id, gate_after, created_at);
 `);
 
 function addColumnIfMissing(table, column, definition) {
@@ -145,7 +158,8 @@ export function getDashboard(userId) {
   const progress = getProgress(userId);
   const activity = db.prepare("SELECT type, created_at FROM activity WHERE user_id = ? ORDER BY created_at DESC LIMIT 30").all(userId);
   const attempts = db.prepare("SELECT kind, passed, score, created_at FROM attempts WHERE user_id = ? ORDER BY created_at DESC LIMIT 30").all(userId);
-  return { ...progress, activity, attempts, streak: calculateStreak(activity) };
+  const assessments = db.prepare("SELECT gate_after, objective_score, objective_total, coding_passed, passed, created_at FROM assessment_attempts WHERE user_id = ? ORDER BY created_at DESC LIMIT 30").all(userId);
+  return { ...progress, activity, attempts, assessments, assessmentPasses: assessments.filter((item) => item.passed).map((item) => item.gate_after), streak: calculateStreak(activity) };
 }
 
 function calculateStreak(activity) {
@@ -159,6 +173,21 @@ function calculateStreak(activity) {
 
 export function levelsForUser(userId) {
   const progress = getProgress(userId);
+  const passedGates = new Set(db.prepare("SELECT gate_after FROM assessment_attempts WHERE user_id = ? AND passed = 1").all(userId).map((row) => row.gate_after));
   const levels = db.prepare("SELECT id, title, has_content FROM course_levels ORDER BY CAST(SUBSTR(id, 2) AS INTEGER)").all();
-  return levels.map((level, index) => ({ ...level, completed: progress.completed.includes(level.id), unlocked: index === 0 || progress.completed.includes(levels[index - 1].id) }));
+  return levels.map((level, index) => {
+    const number = index + 1;
+    const prerequisiteComplete = index === 0 || progress.completed.includes(levels[index - 1].id);
+    const gateOpen = number <= 1 || Math.floor((number - 1) / 3) === 0 || passedGates.has(Math.floor((number - 1) / 3) * 3);
+    return { ...level, completed: progress.completed.includes(level.id), unlocked: prerequisiteComplete && gateOpen };
+  });
+}
+
+export function assessmentAttempts(userId, gateAfter) {
+  return db.prepare("SELECT id, gate_after, objective_score, objective_total, coding_passed, passed, created_at FROM assessment_attempts WHERE user_id = ? AND gate_after = ? ORDER BY created_at DESC").all(userId, gateAfter);
+}
+
+export function recordAssessmentAttempt({ userId, gateAfter, objectiveScore, objectiveTotal, codingPassed, passed, answers }) {
+  const result = db.prepare(`INSERT INTO assessment_attempts (user_id, gate_after, objective_score, objective_total, coding_passed, passed, answers_json) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(userId, gateAfter, objectiveScore, objectiveTotal, codingPassed ? 1 : 0, passed ? 1 : 0, JSON.stringify(answers || {}));
+  return db.prepare("SELECT id, gate_after, objective_score, objective_total, coding_passed, passed, created_at FROM assessment_attempts WHERE id = ?").get(Number(result.lastInsertRowid));
 }

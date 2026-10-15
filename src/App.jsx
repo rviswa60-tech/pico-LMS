@@ -9,6 +9,7 @@ import AuthPage from "./components/AuthPage.jsx";
 import Header from "./components/Header.jsx";
 import Roadmap from "./components/Roadmap.jsx";
 import LevelView from "./components/LevelView.jsx";
+import Assessment from "./components/Assessment.jsx";
 
 function pathFor(path) {
   const [pathname, query = ""] = path.split("?");
@@ -52,11 +53,13 @@ export default function App() {
 
 function Main({ progress, onLogout }) {
   const [active, setActive] = useState(null);
+  const [assessment, setAssessment] = useState(null);
   const [justUnlocked, setJustUnlocked] = useState(null);
   useEffect(() => { getPyodide().catch(() => {}); }, []);
   if (active) {
     const next = LEVELS[active.n] || null;
     return <><Header state={progress.state} onReset={progress.reset} onLogout={onLogout} /><main className="page"><LevelView key={active.id} level={active} nextLevel={next} progress={progress} onExit={() => setActive(null)} onComplete={() => { setJustUnlocked(next ? next.id : null); setActive(null); }} /></main></>;
   }
-  return <><Header state={progress.state} onReset={progress.reset} onLogout={onLogout} /><main className="page"><Roadmap levels={LEVELS} state={progress.state} completed={progress.state.completed} justUnlocked={justUnlocked} onOpen={(level) => setActive(level)} /></main></>;
+  if (assessment) return <><Header state={progress.state} onReset={progress.reset} onLogout={onLogout} /><main className="page"><Assessment gateAfter={assessment} onExit={() => setAssessment(null)} onComplete={() => setAssessment(null)} /></main></>;
+  return <><Header state={progress.state} onReset={progress.reset} onLogout={onLogout} /><main className="page"><Roadmap levels={LEVELS} state={progress.state} completed={progress.state.completed} justUnlocked={justUnlocked} onOpen={(level) => setActive(level)} onAssessment={setAssessment} /></main></>;
 }

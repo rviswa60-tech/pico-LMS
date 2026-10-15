@@ -7,7 +7,9 @@ import {
   db, createUser, createAccount, getUser, getUserWithPasswordByEmail, normalizeEmail,
   createSession, getSessionUser, deleteSession, deleteUserSessions, createPasswordReset,
   consumePasswordReset, updatePassword, getProgress, getDashboard, levelsForUser,
+  assessmentAttempts, recordAssessmentAttempt,
 } from "./db.js";
+import { LEVELS } from "../src/data/levels.js";
 
 const PORT = Number(process.env.PORT || 8787);
 const SESSION_DAYS = 30;
@@ -15,6 +17,7 @@ const RESET_MINUTES = 30;
 const root = path.dirname(fileURLToPath(import.meta.url));
 const distRoot = path.join(root, "..", "dist");
 const rateBuckets = new Map();
+const ASSESSMENT_GATES = [3, 6, 9, 12, 15, 18];
 const json = (value) => JSON.stringify(value);
 
 function responseHeaders(req) {
@@ -59,6 +62,28 @@ function requireCsrf(req, res) { if (!csrfValid(req)) { send(req, res, 403, { er
 function issueSession(user, res) { const id = randomToken(32); const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString(); createSession({ id, userId: user.id, expiresAt }); setCookies(res, [cookie("pico_session", id, { httpOnly: true, maxAge: SESSION_DAYS * 86400 })]); }
 function clearSession(req, res) { const sessionId = parseCookies(req).pico_session; if (sessionId) deleteSession(sessionId); setCookies(res, [cookie("pico_session", "", { httpOnly: true, maxAge: 0 }), cookie("pico_csrf", "", { maxAge: 0 })]); }
 function auth(req, res) { const sessionId = parseCookies(req).pico_session; const user = sessionId ? getSessionUser(sessionId) : null; if (!user) { send(req, res, 401, { error: "Authentication required" }); return null; } return user; }
+
+function assessmentQuestions(gateAfter) {
+  const levels = LEVELS.slice(Math.max(0, gateAfter - 3), gateAfter);
+  const questions = levels.flatMap((level) => [
+    level.content?.challenge ? { level, kind: "challenge", problem: level.content.challenge } : null,
+    level.content?.boss ? { level, kind: "boss", problem: level.content.boss } : null,
+  ].filter(Boolean));
+  return questions.slice(0, 5).map(({ level, kind, problem }, index) => ({
+    id: `${level.id}-${kind}-assessment`,
+    levelId: level.id,
+    type: "coding",
+    difficulty: index + 1,
+    difficultyLabel: ["Foundation", "Core", "Applied", "Advanced", "Stretch"][index],
+    title: problem.title || problem.name,
+    prompt: problem.prompt,
+    starter: problem.starter,
+    sampleOutput: problem.expected,
+    topic: level.title,
+    // expected output, rules and hidden tests deliberately stay server-side
+    grader: { expected: problem.expected, rules: problem.rules || [], assertions: problem.assertions || [] },
+  }));
+}
 
 async function serveStatic(res, pathname) {
   const requested = pathname === "/" ? "/index.html" : pathname;
@@ -119,11 +144,33 @@ async function route(req, res) {
     if (req.method === "GET" && url.pathname === "/api/me") return send(req, res, 200, { user: safeUser(user), dashboard: getDashboard(user.id) });
     if (req.method === "GET" && url.pathname === "/api/dashboard") return send(req, res, 200, getDashboard(user.id));
     if (req.method === "GET" && url.pathname === "/api/levels") return send(req, res, 200, { levels: levelsForUser(user.id) });
+    if (req.method === "GET" && url.pathname.startsWith("/api/assessments/")) {
+      const gateAfter = Number(url.pathname.split("/").pop());
+      if (!ASSESSMENT_GATES.includes(gateAfter)) return send(req, res, 404, { error: "Assessment not found" });
+      const progress = getProgress(user.id);
+      if (!progress.completed.includes(`L${gateAfter}`)) return send(req, res, 403, { error: "Complete the prerequisite modules first." });
+      return send(req, res, 200, { gateAfter, title: `Python competency test after Module ${gateAfter}`, passPolicy: { codingQuestions: 5, codingQuestionsRequired: 5 }, questions: assessmentQuestions(gateAfter).map(({ grader, ...question }) => question), attempts: assessmentAttempts(user.id, gateAfter) });
+    }
+    if (req.method === "POST" && url.pathname.startsWith("/api/assessments/") && url.pathname.endsWith("/submit")) {
+      if (!requireCsrf(req, res) || !rateLimit(req, "assessment-submit", 10)) return;
+      const parts = url.pathname.split("/"); const gateAfter = Number(parts[3]);
+      if (!ASSESSMENT_GATES.includes(gateAfter)) return send(req, res, 404, { error: "Assessment not found" });
+      const progress = getProgress(user.id);
+      if (!progress.completed.includes(`L${gateAfter}`)) return send(req, res, 403, { error: "Complete the prerequisite modules first." });
+      const body = await readBody(req); const questions = assessmentQuestions(gateAfter); const answers = body.answers || {};
+      const verifiedQuestionIds = Array.isArray(body.verifiedQuestionIds) ? body.verifiedQuestionIds : [];
+      const objectiveScore = verifiedQuestionIds.filter((id) => questions.some((question) => question.id === id)).length;
+      const objectiveTotal = questions.length; const codingPassed = process.env.PICO_EXECUTOR_TRUSTED === "1" && objectiveScore === objectiveTotal;
+      const passed = codingPassed;
+      const attempt = recordAssessmentAttempt({ userId: user.id, gateAfter, objectiveScore, objectiveTotal, codingPassed, passed, answers: Object.fromEntries(Object.keys(answers).map((id) => [id, { submitted: Boolean(String(answers[id] || "").trim()) }])) });
+      return send(req, res, 201, { attempt, passed, nextUnlocked: passed ? `L${gateAfter + 1}` : null, feedback: passed ? "Competency confirmed. The next module is unlocked." : "Every coding question must pass its visible and hidden tests before the next module unlocks." });
+    }
     if (req.method === "POST" && url.pathname.startsWith("/api/progress/")) {
       if (!requireCsrf(req, res)) return;
       const levelId = url.pathname.split("/").pop(); const body = await readBody(req); const levelNumber = Number(levelId.replace("L", ""));
       const level = db.prepare("SELECT id FROM course_levels WHERE id = ?").get(levelId); if (!level) return send(req, res, 404, { error: "Level not found" });
-      if (levelNumber > 1 && !getProgress(user.id).completed.includes(`L${levelNumber - 1}`)) return send(req, res, 403, { error: "Complete the previous module before unlocking this one." });
+      const access = levelsForUser(user.id).find((item) => item.id === levelId);
+      if (!access?.unlocked) return send(req, res, 403, { error: levelNumber > 3 ? "Pass the competency check before unlocking this module." : "Complete the previous module before unlocking this one." });
       db.prepare(`INSERT INTO course_progress (user_id, level_id, xp, hints_used, had_error) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, level_id) DO UPDATE SET xp = MAX(course_progress.xp, excluded.xp), hints_used = course_progress.hints_used + excluded.hints_used, had_error = MAX(course_progress.had_error, excluded.had_error), completed_at = CURRENT_TIMESTAMP`).run(user.id, levelId, Math.max(0, Number(body.xp || 0)), Math.max(0, Number(body.hintsUsed || 0)), body.hadError ? 1 : 0);
       db.prepare("INSERT INTO activity (user_id, type, metadata) VALUES (?, ?, ?)").run(user.id, "level_completed", JSON.stringify({ levelId })); return send(req, res, 200, getDashboard(user.id));
     }
