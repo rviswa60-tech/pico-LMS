@@ -83,7 +83,7 @@ export default function LevelView({ level, nextLevel, progress, onExit, onComple
     if (bossInfo.hintsUsed === 0) add(20);
     const xp = replay ? 0 : earned.current.xp;
     const badges = [...earned.current.badges].filter((b) => !progress.state.badges.includes(b));
-    progress.completeLevel({ id: level.id, xp, badges });
+    progress.completeLevel({ id: level.id, xp, badges, hintsUsed: bossInfo.hintsUsed, hadError: bossInfo.hadError });
     setResult({ xp, badges });
   };
 

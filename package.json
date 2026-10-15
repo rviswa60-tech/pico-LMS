@@ -4,9 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
+    "dev:client": "vite",
+    "server": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev:full": "node scripts/dev.mjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node --disable-warning=ExperimentalWarning server/index.js"
   },
   "dependencies": {
     "react": "^18.3.1",

@@ -14,9 +14,25 @@ badges, reward screen with confetti, and level unlocking. Progress is saved in l
        npm install
        npm run dev
 
-4. Open the URL it prints (usually http://localhost:5173)
+4. Open the URL it prints (usually http://localhost:5173). The default command starts both the Vite frontend and the API server.
 
 The first code run downloads the Python runtime (~10 MB) from a CDN, so you need internet.
+
+## Full-stack development
+
+The app includes a small production-shaped API in `server/` using Node's built-in HTTP, crypto and SQLite modules. No native database dependency is required.
+
+- `GET /api/health` checks the service.
+- `POST /api/auth/guest` creates a local learner session and bearer token.
+- `GET /api/me` returns the authenticated learner and dashboard summary.
+- `GET /api/dashboard` returns progress, attempts, activity and streak data.
+- `GET /api/levels` returns the seeded 20-level course catalog.
+- `POST /api/progress/:levelId` persists completion, XP, hints and bug-fix data.
+- `POST /api/attempts` records quiz or coding attempts.
+- `POST /api/activity` records learning activity.
+- `DELETE /api/me/progress` clears the authenticated learner's progress.
+
+`npm run dev` or `npm run dev:full` starts both processes. `npm run server` starts only the API on `http://localhost:8787`, and `npm run dev:client` starts only Vite. The Vite dev server proxies `/api` to the API. Runtime data is stored in `data/pico.sqlite` and is intentionally git-ignored.
 
 ## Project map
 

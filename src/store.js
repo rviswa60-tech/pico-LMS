@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { createGuest, syncProgress, recordActivity, resetRemoteProgress } from "./api.js";
 
 const KEY = "pico-lms-v1";
 
@@ -63,11 +64,14 @@ export function useProgress() {
   }, [state]);
 
   const setName = useCallback(
-    (name) => setState((p) => bumpStreak({ ...p, name })),
+    (name) => {
+      setState((p) => bumpStreak({ ...p, name }));
+      createGuest(name).catch(() => {});
+    },
     []
   );
 
-  const completeLevel = useCallback(({ id, xp, badges }) => {
+  const completeLevel = useCallback(({ id, xp, badges, hintsUsed = 0, hadError = false }) => {
     setState((p) =>
       bumpStreak({
         ...p,
@@ -76,14 +80,21 @@ export function useProgress() {
         badges: Array.from(new Set([...p.badges, ...badges])),
       })
     );
+    syncProgress(id, { xp, badges, hintsUsed, hadError }).catch(() => {});
   }, []);
 
   const noteHint = useCallback(
-    () => setState((p) => ({ ...p, hintsUsed: p.hintsUsed + 1 })),
+    () => {
+      setState((p) => ({ ...p, hintsUsed: p.hintsUsed + 1 }));
+      recordActivity({ type: "hint_used" }).catch(() => {});
+    },
     []
   );
 
-  const reset = useCallback(() => setState(initial), []);
+  const reset = useCallback(() => {
+    setState(initial);
+    resetRemoteProgress().catch(() => {});
+  }, []);
 
   return { state, setName, completeLevel, noteHint, reset };
 }

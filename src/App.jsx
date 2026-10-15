@@ -55,6 +55,7 @@ function Main({ progress }) {
       <main className="page">
         <Roadmap
           levels={LEVELS}
+          state={progress.state}
           completed={progress.state.completed}
           justUnlocked={justUnlocked}
           onOpen={(l) => setActive(l)}
