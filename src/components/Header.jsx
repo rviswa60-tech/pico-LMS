@@ -12,7 +12,7 @@ function Icon({ name, size = 18 }) {
   return <svg className="ui-icon" viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
-export default function Header({ state, onReset }) {
+export default function Header({ state, onReset, onLogout }) {
   const { rank } = rankFor(state.xp);
   const initials = state.name.slice(0, 2).toUpperCase();
   return (
@@ -32,7 +32,7 @@ export default function Header({ state, onReset }) {
         </nav>
         <div className="sidebar-bottom">
           <div className="plan-card"><div className="plan-icon">✦</div><div><strong>Explorer plan</strong><span>3 of 20 missions live</span></div><span className="plan-arrow">↗</span></div>
-          <div className="sidebar-user"><span className="avatar avatar-small">{initials || "PL"}</span><span><strong>{state.name}</strong><small>{rank.name}</small></span><button className="more-button" onClick={() => window.confirm("Reset all progress on this device?") && onReset()} aria-label="Reset progress">•••</button></div>
+          <div className="sidebar-user"><span className="avatar avatar-small">{initials || "PL"}</span><span><strong>{state.name}</strong><small>{rank.name}</small></span><button className="more-button" onClick={() => window.confirm("Reset all progress on this device?") && onReset()} aria-label="Reset progress">•••</button><button className="logout-button" onClick={onLogout} aria-label="Sign out" title="Sign out">↪</button></div>
         </div>
       </aside>
       <header className="app-topbar">

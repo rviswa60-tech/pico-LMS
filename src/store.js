@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { createGuest, syncProgress, recordActivity, resetRemoteProgress } from "./api.js";
+import { syncProgress, recordActivity, resetRemoteProgress } from "./api.js";
 
 const KEY = "pico-lms-v1";
 
@@ -63,13 +63,18 @@ export function useProgress() {
     }
   }, [state]);
 
-  const setName = useCallback(
-    (name) => {
-      setState((p) => bumpStreak({ ...p, name }));
-      createGuest(name).catch(() => {});
-    },
-    []
-  );
+  const setName = useCallback((name) => setState((p) => bumpStreak({ ...p, name })), []);
+
+  const hydrate = useCallback((user, dashboard = {}) => {
+    setState((p) => ({
+      ...p,
+      name: user?.name || p.name,
+      xp: dashboard.xp ?? p.xp,
+      streak: dashboard.streak ?? p.streak,
+      completed: dashboard.completed ?? p.completed,
+      hintsUsed: dashboard.hintsUsed ?? p.hintsUsed,
+    }));
+  }, []);
 
   const completeLevel = useCallback(({ id, xp, badges, hintsUsed = 0, hadError = false }) => {
     setState((p) =>
@@ -96,5 +101,5 @@ export function useProgress() {
     resetRemoteProgress().catch(() => {});
   }, []);
 
-  return { state, setName, completeLevel, noteHint, reset };
+  return { state, setName, hydrate, completeLevel, noteHint, reset };
 }

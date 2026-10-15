@@ -14,6 +14,20 @@ export default function Challenge({ spec, boss = false, noteHint, onPass }) {
   const lastOffer = useRef(0);
   const passed = verdict && verdict.passed;
 
+  useEffect(() => {
+    pico.setContext({
+      surface: "challenge",
+      greeting: "Stuck on your code? Let's work through it.",
+      title: spec.title || spec.name,
+      topic: spec.title || spec.name,
+      body: spec.prompt,
+      hints: spec.hints,
+      hintIndex: hintsShown,
+      example: spec.example,
+      error: verdict?.problems?.[0]?.title || "",
+    });
+  }, [spec.id, hintsShown, verdict?.problems?.length]);
+
   const revealHint = () => {
     setHintsShown((h) => {
       if (h >= 5) return h;
@@ -62,7 +76,8 @@ export default function Challenge({ spec, boss = false, noteHint, onPass }) {
     if (!res.ok) {
       hadError.current = true;
       fails.current += 1;
-      pico.say("I found a small bug. Let's investigate it together.", { mood: "detective" });
+      pico.setContext({ error: res.error || "The code could not run" });
+      pico.say("Not quite yet. Let's find the issue together.", { mood: "detective" });
       setVerdict({ passed: false, problems: [] });
       if (fails.current >= 3) offerHelp();
       return;
@@ -90,6 +105,7 @@ export default function Challenge({ spec, boss = false, noteHint, onPass }) {
       if (fails.current >= 3) offerHelp();
     } else {
       setVerdict({ passed: true, problems: [] });
+      pico.setContext({ surface: "completion", greeting: boss ? "You completed the boss challenge!" : "Great work! Your code passed.", topic: spec.title || spec.name });
       pico.say(boss ? "BOSS DEFEATED! That was brilliant." : "Challenge complete. Nicely done!", {
         mood: "celebrating",
         ttl: 6000,

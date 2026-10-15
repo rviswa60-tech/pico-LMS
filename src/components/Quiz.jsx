@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Text from "./Text.jsx";
 import { usePico } from "./Pico.jsx";
 
@@ -11,6 +11,12 @@ export default function Quiz({ questions, onPass }) {
 
   const q = questions[i];
   const need = Math.ceil(questions.length * 0.66);
+
+  useEffect(() => {
+    pico.setContext({ surface: "assessment", restricted: true, greeting: "I’ll stay quiet while you show what you know.", topic: "this module assessment" });
+    pico.clickRef.current = null;
+    return () => { pico.clickRef.current = null; };
+  }, [questions.length]);
 
   const choose = (idx) => {
     if (picked !== null) return;

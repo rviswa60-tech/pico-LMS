@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePico } from "./Pico.jsx";
 import { rankFor } from "../store.js";
 
@@ -15,6 +15,9 @@ export default function Roadmap({ levels, state, completed, justUnlocked, onOpen
   const live = levels.filter((l) => l.content).length;
   const done = levels.filter((l) => completed.includes(l.id)).length;
   const activeDays = Math.min(7, Math.max(0, state?.streak || 0));
+  useEffect(() => {
+    pico.setContext({ surface: "dashboard", greeting: "Welcome back! Ready for your next mission?", topic: next?.title || "your next mission", body: next?.content?.intro || "Choose an open mission to keep your Python progress moving." });
+  }, [next?.id, done]);
   const status = (i) => completed.includes(levels[i].id) ? "done" : i === cur ? "current" : i < cur ? "done" : "locked";
 
   const click = (i) => {

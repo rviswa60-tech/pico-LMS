@@ -34,6 +34,20 @@ The app includes a small production-shaped API in `server/` using Node's built-i
 
 `npm run dev` or `npm run dev:full` starts both processes. `npm run server` starts only the API on `http://localhost:8787`, and `npm run dev:client` starts only Vite. The Vite dev server proxies `/api` to the API. Runtime data is stored in `data/pico.sqlite` and is intentionally git-ignored.
 
+## Authentication
+
+The app now includes account registration, cookie-backed sessions, CSRF protection, login/logout, protected learning access, password hashing with Node's `scrypt`, and one-time expiring password reset tokens. Existing guest-era database records are preserved by additive migrations.
+
+For production, set a strong secret before starting the API:
+
+```powershell
+$env:PICO_AUTH_SECRET = "replace-with-a-long-random-secret"
+$env:NODE_ENV = "production"
+npm start
+```
+
+Password reset requests intentionally use a generic response so they do not reveal whether an email exists. In local development, the reset response exposes a temporary reset token in the UI so the flow can be tested without an email provider. Production email delivery is the remaining external integration: connect `/api/auth/request-reset` to your transactional email provider and never return `devResetToken` in production.
+
 ## Project map
 
     src/data/levels.js          ALL course content (add levels here)

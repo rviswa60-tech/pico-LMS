@@ -5,7 +5,9 @@ import {
   useMemo,
   useRef,
   useState,
+  useEffect,
 } from "react";
+import { getPicoHelp } from "../services/picoAssistantService.js";
 
 // brow: [leftRotate, rightRotate, leftLift, rightLift]
 const MOODS = {
@@ -151,7 +153,13 @@ export function usePico() {
 export function PicoProvider({ children, showDock = true }) {
   const [mood, setMood] = useState("idle");
   const [bubble, setBubble] = useState(null); // { text, actions? }
+  const [context, setContextState] = useState({ surface: "landing", greeting: "Hi! I'm Pico. Ready to start your Python journey?" });
+  const [open, setOpen] = useState(false);
+  const [help, setHelp] = useState(null);
+  const [helpLoading, setHelpLoading] = useState(false);
+  const [helpError, setHelpError] = useState("");
   const timer = useRef(null);
+  const helpTimer = useRef(null);
   const clickRef = useRef(null); // the current screen can register what clicking Pico does
 
   const dismiss = useCallback(() => {
@@ -172,7 +180,37 @@ export function PicoProvider({ children, showDock = true }) {
     }
   }, []);
 
-  const value = useMemo(() => ({ mood, setMood, say, dismiss, clickRef }), [mood, say, dismiss]);
+  const setContext = useCallback((next) => {
+    setContextState((current) => ({ ...current, ...next }));
+    setHelp(null);
+    setHelpError("");
+  }, []);
+
+  const requestHelp = useCallback((action) => {
+    clearTimeout(helpTimer.current);
+    setOpen(true);
+    setHelpLoading(true);
+    setHelpError("");
+    setMood("thinking");
+    helpTimer.current = setTimeout(() => {
+      try {
+        setHelp({ action, text: getPicoHelp(action, context) });
+        setMood(action === "hint" ? "helping" : "curious");
+      } catch {
+        setHelpError("I couldn't prepare that note. Try again in a moment.");
+        setMood("confused");
+      } finally {
+        setHelpLoading(false);
+      }
+    }, 280);
+  }, [context]);
+
+  useEffect(() => () => {
+    clearTimeout(timer.current);
+    clearTimeout(helpTimer.current);
+  }, []);
+
+  const value = useMemo(() => ({ mood, setMood, say, dismiss, clickRef, context, setContext, open, setOpen, help, helpLoading, helpError, requestHelp }), [mood, say, dismiss, context, setContext, open, help, helpLoading, helpError, requestHelp]);
 
   const onPicoClick = () => {
     if (clickRef.current) clickRef.current();
@@ -182,34 +220,35 @@ export function PicoProvider({ children, showDock = true }) {
   return (
     <PicoCtx.Provider value={value}>
       {children}
-      {showDock && (
-        <div className="pico-dock">
-          {bubble && (
-            <div className="pico-bubble" role="status">
-              <p>{bubble.text}</p>
-              {bubble.actions && (
-                <div className="pico-actions">
-                  {bubble.actions.map((a) => (
-                    <button
-                      key={a.label}
-                      className={a.primary ? "btn btn-small" : "btn btn-small btn-ghost"}
-                      onClick={() => {
-                        dismiss();
-                        a.onClick();
-                      }}
-                    >
-                      {a.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          <button className="pico-button" onClick={onPicoClick} aria-label="Ask Pico for help">
-            <PicoFace mood={mood} size={104} />
-          </button>
-        </div>
-      )}
+      {showDock && <PicoAssistant onPicoClick={onPicoClick} bubble={bubble} dismiss={dismiss} />}
     </PicoCtx.Provider>
   );
+}
+
+function actionLabel(action) {
+  return { explain: "Explain this topic", hint: "Give me a hint", debug: "Help me debug", example: "Show a similar example" }[action];
+}
+
+export function PicoAssistant({ onPicoClick, bubble, dismiss }) {
+  const pico = usePico();
+  const restricted = pico.context.restricted || pico.context.surface === "assessment";
+  const actions = restricted ? ["explain"] : ["explain", "hint", "debug", "example"];
+  const panelText = pico.help?.text || pico.context.greeting || bubble?.text || "What's giving you trouble?";
+
+  return <div className={`pico-dock ${pico.open ? "pico-dock-open" : ""}`}>
+    {pico.open && <section className="pico-panel" role="dialog" aria-modal="false" aria-labelledby="pico-panel-title">
+      <div className="pico-panel-head"><div><span className="pico-panel-kicker">PICO IS HERE</span><h2 id="pico-panel-title">What's giving you trouble?</h2></div><button className="pico-close" onClick={() => pico.setOpen(false)} aria-label="Minimize Pico">×</button></div>
+      <div className="pico-panel-intro"><PicoFace mood={pico.mood} size={70} /><p>{panelText}</p></div>
+      {pico.helpLoading && <p className="pico-response" role="status" aria-live="polite"><span className="pico-typing"><i /><i /><i /></span> Let me think...</p>}
+      {!pico.helpLoading && pico.helpError && <p className="pico-response pico-error" role="alert">{pico.helpError}</p>}
+      {!pico.helpLoading && pico.help && <p className="pico-response" role="status" aria-live="polite"><strong>Suggested next step</strong>{pico.help.text}</p>}
+      <div className="pico-help-actions">{actions.map((action) => <button key={action} className="pico-help-action" onClick={() => pico.requestHelp(action)}>{actionLabel(action)} <span>→</span></button>)}</div>
+      {restricted && <small className="pico-policy">Pico stays non-answering during graded assessments.</small>}
+    </section>}
+    {!pico.open && bubble && <div className="pico-bubble" role="status"><p>{bubble.text}</p>{bubble.actions && <div className="pico-actions">{bubble.actions.map((a) => <button key={a.label} className={a.primary ? "btn btn-small" : "btn btn-small btn-ghost"} onClick={() => { dismiss(); a.onClick(); }}>{a.label}</button>)}</div>}</div>}
+    <button className="pico-button" onClick={() => { if (!pico.open) onPicoClick(); pico.setOpen((value) => !value); }} aria-label={pico.open ? "Minimize Pico assistant" : "Open Pico assistant"} aria-expanded={pico.open}>
+      <PicoFace mood={pico.mood} size={104} />
+      {!pico.open && <span className="pico-mini-label"><strong>Pico is here</strong><small>{restricted ? "Assessment mode" : "Need a hint?"}</small></span>}
+    </button>
+  </div>;
 }

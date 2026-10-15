@@ -9,8 +9,12 @@ import { usePico } from "./Pico.jsx";
 const STEPS = ["Learn", "Quiz", "Challenge", "Boss battle"];
 
 function Learn({ cards, onDone }) {
+  const pico = usePico();
   const [i, setI] = useState(0);
   const card = cards[i];
+  useEffect(() => {
+    pico.setContext({ surface: "lesson", greeting: "Need a hint?", title: card.title, topic: card.title, body: card.body, example: card.code });
+  }, [i, card.title]);
   return (
     <div className="panel">
       <p className="dim small">
@@ -69,6 +73,7 @@ export default function LevelView({ level, nextLevel, progress, onExit, onComple
   const replay = progress.state.completed.includes(level.id);
 
   useEffect(() => {
+    pico.setContext({ surface: "lesson", greeting: "Need a hint?", title: c.mission, topic: c.mission, body: c.intro });
     pico.say(c.intro, { mood: "happy", ttl: 6000 });
     window.scrollTo(0, 0);
   }, []);
